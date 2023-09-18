@@ -7,6 +7,7 @@ use std::{
     time::Duration,
 };
 
+
 use crossterm::event::{read, Event, KeyCode, KeyEvent, KeyModifiers};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use crossterm::{cursor, ExecutableCommand};
@@ -24,6 +25,9 @@ fn format_duration(duration: Duration) -> String {
 
     return format!(" {:0>2}:{:0>2}.{:0>1}s", minutes, seconds, ms);
 }
+
+use signal_hook::consts::{SIGTERM};
+use crate::TimerEvent::OnStop;
 
 fn main() -> anyhow::Result<()> {
     let (sender, receiver) = channel::<TimerEvent>();
@@ -47,7 +51,9 @@ fn main() -> anyhow::Result<()> {
                     std.execute(cursor::RestorePosition)?;
                     std.flush().unwrap();
                 }
-                TimerEvent::OnStop => break,
+                TimerEvent::OnStop => {
+                    break;
+                }
                 TimerEvent::OnLap => {
                     let diff = Instant::now().duration_since(last_lap);
                     last_lap = Instant::now();
@@ -89,6 +95,16 @@ fn main() -> anyhow::Result<()> {
                 _ => {}
             }
         }
+    });
+
+    let _signal_sender = sender.clone();
+    let _signal_loop = thread::spawn(move || -> anyhow::Result<()> {
+        unsafe {
+            signal_hook::low_level::register(SIGTERM, move|| {
+                _signal_sender.send(OnStop).unwrap();
+            })?;
+        }
+        Ok(())
     });
 
     main_loop.join().unwrap()?;
